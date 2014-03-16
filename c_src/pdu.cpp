@@ -125,9 +125,114 @@ static ERL_NIF_TERM get_content_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
     return enif_make_tuple2(env, enif_make_atom(env, "ok"), enif_make_binary(env, &result));
 }
 
+/*Add option with for parameter:
+			 PDU, option number, option length, option value
+*/
+static ERL_NIF_TERM add_option_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+		ErlNifBinary buffer,result;
+		CoapPDU *pdu;
+		CoapPDU::Option optnum;
+		int optlen, optnum_int;
+		uint8_t *optval;
+
+		if(argc != 4 || !enif_is_binary(env,argv[0]) ||
+				!enif_is_number(env,argv[1]) ||
+				!enif_is_number(env,argv[2]) ||
+				!enif_is_list(env,argv[3]))
+		{
+				return enif_make_badarg(env);
+		}
+		if(!enif_get_int(env,argv[1], &optnum_int))
+				return enif_make_badarg(env);
+		optnum = static_cast<CoapPDU::Option>(optnum_int);
+		if(!enif_get_int(env,argv[2], &optlen))
+				return enif_make_badarg(env);
+		optval = (uint8_t *)malloc(sizeof(uint8_t) * (optlen+1));
+		if(!enif_get_string(env,argv[3], reinterpret_cast<char *>(optval), optlen+1, ERL_NIF_LATIN1))
+				return enif_make_badarg(env);
+		if(!enif_inspect_iolist_as_binary(env, argv[0], &buffer))
+				return enif_make_badarg(env);
+
+		//parse the result
+		pdu = new CoapPDU(buffer.data, buffer.size);
+		if(!pdu->validate())
+		{
+				delete pdu;
+				return enif_make_tuple2(env, enif_make_atom(env,"error"), enif_make_string(env,"Invalid PDU", ERL_NIF_LATIN1));
+		}
+
+		if(pdu->addOption(optnum, optlen, (uint8_t *)optval))
+		{
+				delete pdu;
+				return enif_make_tuple2(env, enif_make_atom(env,"error"), enif_make_string(env,"add option failed",ERL_NIF_LATIN1));
+		}
+
+		if(!enif_alloc_binary(pdu->getPDULength(), &result))
+		{
+				delete pdu;
+				return enif_make_tuple2(env, enif_make_atom(env,"error"), enif_make_string(env,"Unable to allocate the result", ERL_NIF_LATIN1));
+		}
+		memcpy(result.data, pdu->getPDUPointer(), pdu->getPDULength());
+		delete pdu;
+		free(optval);
+		return enif_make_tuple2(env,enif_make_atom(env,"ok"),enif_make_binary(env, &result));
+}
+
+/*add payload to the PDU, need parameter: PDU, payload value, payload length(bytes)*/
+static ERL_NIF_TERM add_payload_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+		ErlNifBinary buffer, result;
+		CoapPDU *pdu;
+		int vallen;
+		uint8_t *value;
+		if(argc !=3 || !enif_is_binary(env,argv[0]) ||
+				!enif_is_list(env,argv[1]) ||
+				!enif_is_number(env,argv[2]))
+		{
+				return enif_make_badarg(env);
+		}
+		if(!enif_inspect_iolist_as_binary(env, argv[0], &buffer))
+				return enif_make_badarg(env);
+		if(!enif_get_int(env, argv[2], &vallen))
+				return enif_make_badarg(env);
+		value = (uint8_t *)malloc(sizeof(uint8_t) * (vallen+1));
+		if(!enif_get_string(env, argv[1], reinterpret_cast<char *>(value), vallen+1, ERL_NIF_LATIN1))
+				return enif_make_badarg(env);
+		//parse the result
+		pdu = new CoapPDU(buffer.data, 2*buffer.size, buffer.size);
+		if(!pdu->validate())
+		{
+				delete pdu;
+				return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_string(env, "Invalid PDU", ERL_NIF_LATIN1));
+		}
+
+		if(pdu->setPayload((uint8_t *)value, vallen))
+		{
+				delete pdu;
+		//		return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_int(env, pdu->setPayload((uint8_t *)value, vallen)));
+		//		return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_string(env,(char *) value, ERL_NIF_LATIN1));
+				return enif_make_tuple2(env, enif_make_atom(env, "error"), enif_make_string(env,"add payload failed", ERL_NIF_LATIN1));
+		}
+
+		//return the binary data
+		if(!enif_alloc_binary(pdu->getPDULength(), &result))
+		{
+				delete pdu;
+				return enif_make_tuple2(env, enif_make_atom(env,"error"), enif_make_string(env, "Unable to alloc the result", ERL_NIF_LATIN1));
+		}
+		memcpy(result.data, pdu->getPDUPointer(), pdu->getPDULength());
+		delete pdu;
+		free(value);
+		return enif_make_tuple2(env, enif_make_atom(env, "ok"), enif_make_binary(env, &result));
+}
+
+
 static ErlNifFunc pdu_NIFs[] = {
     {"make_pdu", 5, &make_pdu_5},
-    {"get_content", 1, &get_content_1}
+    {"get_content", 1, &get_content_1},
+	{"add_option",4, &add_option_4},
+	{"add_payload",3, &add_payload_3}
 };
 
 ERL_NIF_INIT(pdu, pdu_NIFs, NULL, NULL, NULL, NULL);

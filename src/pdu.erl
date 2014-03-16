@@ -1,5 +1,5 @@
 -module(pdu).
--export([init/0, make_pdu/5, get_content/1]).
+-export([init/0, make_pdu/5, get_content/1, add_option/4, add_payload/3]).
 -on_load(init/0).
 
 -define(APPNAME, erl_coap).
@@ -18,3 +18,9 @@ make_pdu(_Type, _Method, _Token, _ID, _URI) ->
 
 get_content(_Buffer) ->
     erlang:nif_error(nif_not_loaded).
+
+add_option(_PDU, _Optnum, _Optlen, _Opnval) ->
+	erlang:nif_error(nif_not_loaded).
+
+add_payload(_PDU, _Payloadvalue, _Payloadlen) ->
+	erlang:nif_error(nif_not_loaded).
