@@ -227,12 +227,47 @@ static ERL_NIF_TERM add_payload_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
 		return enif_make_tuple2(env, enif_make_atom(env, "ok"), enif_make_binary(env, &result));
 }
 
+/*need one parameter: PDU, to see if the packet is ACKED*/
+static ERL_NIF_TERM get_header_1(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+		ErlNifBinary buffer;
+		int ver, type, tkl, code, messageID;
+		CoapPDU *pdu;
+
+		//unwrap all arguments
+		if(argc != 1 || !enif_is_binary(env, argv[0]))
+				return enif_make_badarg(env);
+		if(!enif_inspect_iolist_as_binary(env, argv[0], &buffer))
+				return enif_make_badarg(env);
+
+		//parse the result
+		pdu = new CoapPDU(buffer.data, buffer.size);
+		if(!pdu->validate())
+		{
+				delete pdu;
+				return enif_make_tuple2(env, enif_make_atom(env, "error"),enif_make_string(env, "Invalid PDU", ERL_NIF_LATIN1));
+		}
+
+		//return the Packet header
+		ver = (int)pdu->getVersion();
+		type = pdu->getType();
+		type = type >> 4;
+		tkl = pdu->getTokenLength();
+		code = pdu->getCode();
+		messageID = (int)pdu->getMessageID();
+		delete pdu;
+		return enif_make_tuple6(env,enif_make_atom(env, "ok"), enif_make_int(env, ver), enif_make_int(env, type), enif_make_int(env, tkl), enif_make_int(env, code), enif_make_int(env, messageID));
+
+}
+
+
 
 static ErlNifFunc pdu_NIFs[] = {
     {"make_pdu", 5, &make_pdu_5},
     {"get_content", 1, &get_content_1},
-	{"add_option",4, &add_option_4},
-	{"add_payload",3, &add_payload_3}
+	{"add_option", 4, &add_option_4},
+	{"add_payload", 3, &add_payload_3},
+	{"get_header", 1, &get_header_1}
 };
 
 ERL_NIF_INIT(pdu, pdu_NIFs, NULL, NULL, NULL, NULL);

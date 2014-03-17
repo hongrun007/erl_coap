@@ -1,5 +1,5 @@
 -module(coap_client).
--export([get/2,put/3]).
+-export([get/2,put/3,delete/2]).
 -define(MAX_ID, 65536).
 -define(TOKEN_LENGTH, 8).
 -define(PORT, 5683).
@@ -42,8 +42,27 @@ put(Host, URI, Val) ->
 			gen_udp:send(Socket, Address, ?PORT, NewPDU),
 			Res = case gen_udp:recv(Socket, 0, 3000) of					%timeout 3000 ms
 				{ok, {Address, ?PORT, Packet}} ->
-%					pdu:get_connect(Packet);
-					{ok, sent, {Address, ?PORT}};						% 应该改成收到确认信息
+					pdu:get_header(Packet);
+				{error, Reason} ->
+					{error, Reason}
+			end,
+			gen_udp:close(Socket),
+			Res;
+		{error, Reason} ->
+			{error,Reason}
+	end.
+
+delete(Host, URI) ->
+	Token = make_token(),
+	ID = make_message_id(),
+	{ok,PDU} = pdu:make_pdu(0, ?COAP_DELETE, Token, ID, URI),
+	{ok,Address} = inet_parse:address(Host),
+	case gen_udp:open(?TMP_PORT, [binary, inet, {active, false}]) of
+		{ok,Socket} ->
+			gen_udp:send(Socket, Address, ?PORT, PDU),
+			Res = case gen_udp:recv(Socket, 0, 3000) of
+				{ok, {Address, ?PORT, Packet}} ->
+					pdu:get_header(Packet);
 				{error, Reason} ->
 					{error, Reason}
 			end,
