@@ -132,7 +132,7 @@ static ERL_NIF_TERM add_option_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
 {
 		ErlNifBinary buffer,result;
 		CoapPDU *pdu;
-		CoapPDU::Option optnum;
+//		CoapPDU::Option optnum;
 		int optlen, optnum_int;
 		uint8_t *optval;
 
@@ -145,7 +145,7 @@ static ERL_NIF_TERM add_option_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
 		}
 		if(!enif_get_int(env,argv[1], &optnum_int))
 				return enif_make_badarg(env);
-		optnum = static_cast<CoapPDU::Option>(optnum_int);
+//		optnum = static_cast<CoapPDU::Option>(optnum_int);
 		if(!enif_get_int(env,argv[2], &optlen))
 				return enif_make_badarg(env);
 		optval = (uint8_t *)malloc(sizeof(uint8_t) * (optlen+1));
@@ -155,22 +155,25 @@ static ERL_NIF_TERM add_option_4(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
 				return enif_make_badarg(env);
 
 		//parse the result
-		pdu = new CoapPDU(buffer.data, buffer.size);
+		pdu = new CoapPDU(buffer.data, 2*buffer.size, buffer.size);
 		if(!pdu->validate())
 		{
 				delete pdu;
+				free(optval);
 				return enif_make_tuple2(env, enif_make_atom(env,"error"), enif_make_string(env,"Invalid PDU", ERL_NIF_LATIN1));
 		}
 
-		if(pdu->addOption(optnum, optlen, (uint8_t *)optval))
+		if(pdu->addOption(optnum_int, optlen, (uint8_t *)optval))
 		{
 				delete pdu;
+				free(optval);
 				return enif_make_tuple2(env, enif_make_atom(env,"error"), enif_make_string(env,"add option failed",ERL_NIF_LATIN1));
 		}
 
 		if(!enif_alloc_binary(pdu->getPDULength(), &result))
 		{
 				delete pdu;
+				free(optval);
 				return enif_make_tuple2(env, enif_make_atom(env,"error"), enif_make_string(env,"Unable to allocate the result", ERL_NIF_LATIN1));
 		}
 		memcpy(result.data, pdu->getPDUPointer(), pdu->getPDULength());
@@ -196,8 +199,8 @@ static ERL_NIF_TERM add_payload_3(ErlNifEnv *env, int argc, const ERL_NIF_TERM a
 				return enif_make_badarg(env);
 		if(!enif_get_int(env, argv[2], &vallen))
 				return enif_make_badarg(env);
-		value = (uint8_t *)malloc(sizeof(uint8_t) * (vallen+1));
-		if(!enif_get_string(env, argv[1], reinterpret_cast<char *>(value), vallen+1, ERL_NIF_LATIN1))
+		value = (uint8_t *)malloc(sizeof(uint8_t) * (vallen));
+		if(!enif_get_string(env, argv[1], reinterpret_cast<char *>(value), vallen, ERL_NIF_LATIN1))
 				return enif_make_badarg(env);
 		//parse the result
 		pdu = new CoapPDU(buffer.data, 2*buffer.size, buffer.size);

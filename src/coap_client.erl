@@ -1,13 +1,14 @@
 -module(coap_client).
--export([get/2,put/3,delete/2]).
--define(MAX_ID, 65536).
--define(TOKEN_LENGTH, 8).
--define(PORT, 5683).
--define(TMP_PORT, 6666).
--define(COAP_GET, 1).
--define(COAP_POST, 2).
--define(COAP_PUT, 3).
--define(COAP_DELETE, 4).
+-export([get/2,get/4,put/3,delete/2,subscribe/2]).
+-include("coap.hel").
+%-define(MAX_ID, 65536).
+%-define(TOKEN_LENGTH, 8).
+%-define(PORT, 5683).
+%-define(TMP_PORT, 6666).
+%-define(COAP_GET, 1).
+%-define(COAP_POST, 2).
+%-define(COAP_PUT, 3).
+%-define(COAP_DELETE, 4).
 
 % Public API
 
@@ -30,6 +31,28 @@ get(Host, URI) ->
          {error, Reason} ->
              {error, Reason}
     end.
+
+get(Host, URI, URI_HOST, URI_PORT) ->
+	Token = make_token(),
+	ID = make_message_id(),
+	{ok, PDU} = pdu:make_pdu(0, ?COAP_GET, Token, ID, URI),
+	{ok, PDU1} = pdu:add_option(PDU, ?COAP_OPTION_URI_HOST, length(URI_HOST), URI_HOST),
+	{ok, PDU2} = pdu:add_option(PDU1, ?COAP_OPTION_URI_PORT, length(URI_PORT), URI_PORT),
+	{ok, Address} = inet_parse:address(Host),
+	case gen_udp:open(?TMP_PORT, [binary, inet, {active, false}]) of
+		{ok, Socket} ->
+			gen_udp:send(Socket, Address, ?PORT, PDU2),
+			Res = case gen_udp:recv(Socket, 0, 7000) of
+			{ok, {Address, ?PORT, Packet}} ->
+				pdu:get_header(Packet);
+			{error, Reason} ->
+				{error, Reason}
+			end,
+			gen_udp:close(Socket),
+			Res;
+		{error, Reason} ->
+			{error, Reason}
+	end.
 
 put(Host, URI, Val) ->
 	Token = make_token(),
@@ -72,6 +95,34 @@ delete(Host, URI) ->
 			{error,Reason}
 	end.
 
+subscribe(Host, URI) ->
+	Token = make_token(),
+	ID = make_message_id(),
+	{ok,PDU} = pdu:make_pdu(16#10, ?COAP_GET, Token, ID, URI),
+	{ok,Address} = inet_parse:address(Host),
+	{ok,NewPDU} = pdu:add_option(PDU, 6, 0, ""),						%COAP_OPTION_OBSERVE=6, length=0 , value=empty
+	Pid = spawn(fun recv_subscribe/0),
+	register(sub, Pid),
+	io:format("Parent PID is: ~p~n",[self()]),
+	Pid ! { self(), Address, NewPDU }.
+%	loop().
+%	recv_subscribe(self(), Address, NewPDU).
+%	case gen_udp:open(0, [binary, inet, {active, true}]) of			%use random UDP port number
+%		{ok,Socket} ->
+%			Pid = spawn(fun recv_subscribe(Socket));
+%			gen_udp:send(Socket, Address, ?PORT, NewPDU),
+%			Res = case gen_udp:recv(Socket, 0, 3000) of
+%				{ok, {Address, ?PORT, Packet}} ->
+%					pdu:get_header(Packet);
+%				{error, Reason} ->
+%					{error, Reason}
+%			end,
+%			gen_udp:close(Socket),
+%			Res;
+%		{error, Reason} ->
+%			{error,Reason}
+%	end.
+
 % Private API
 
 make_token() ->
@@ -84,3 +135,54 @@ make_token(Remaining, Acc) ->
 
 make_message_id() ->
     random:uniform(?MAX_ID) - 1.
+
+recv_subscribe() ->
+	receive
+		{From, HostAddress, NewPDU} ->
+			io:format("i am in fun recv_subscribe~n"),
+			case gen_udp:open(0, [binary, inet, {active, true}]) of         %use random UDP port number
+			{ok,Socket} ->
+				gen_udp:send(Socket, HostAddress, ?PORT, NewPDU),
+				io:format("i have sent the packet~n"),
+				recv_subscribe_loop(Socket, HostAddress, From);
+			{error, Reason} ->
+				io:format("{error, ~p}~n", [Reason])
+			end
+	end.
+
+recv_subscribe_loop(Socket, Host, From) ->
+	io:format("i am waitting for packet~n"),
+	receive
+		{udp, Socket, Host, ?PORT, Bin} ->
+			{ok, Content} = pdu:get_content(Bin),
+			{ok, Ver, Type, TKL, Code, MID} = pdu:get_header(Bin),
+			io:format("{ok, ~p}~n", [Content]),
+			io:format("Recever packet with version: ~p~nType: ~p~nTKL:~p~nCode:~p~nMessageID:~p~n", [Ver,Type,TKL,Code,MID]),
+%			{error, Content} = pdu:get_content(Bin),
+			From ! {self(), {ok, Content}},
+			recv_subscribe_loop(Socket, Host, From);
+		{error, Reason} ->
+			From ! {self(), {error, Reason}},
+			io:format("{recv_subscribe_loop get error, ~p}~n", [Reason]),
+			recv_subscribe_loop(Socket, Host, From);
+		{stop, subscribe} ->
+			stop,
+			gen_udp:close(Socket),
+			io:format("sub loop is stoped.~n")
+	after 5000 ->
+		From ! {self(), {error, no_message}},
+		recv_subscribe_loop(Socket, Host, From)
+	end.
+
+loop() ->
+	receive
+		{Pid, {ok, Content}} ->
+			io:format("{ok, ~p}~n", [Content]),
+			loop();
+		{Pid, {error, Content}} ->
+			io:format("{error, ~p}~n", [Content]),
+			loop();
+		Other ->
+			io:format("{error, recvother}~n"),
+			loop()
+	end.
