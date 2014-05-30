@@ -1,5 +1,5 @@
 -module(coap_client).
--export([get/2,get/4,put/3,delete/2,subscribe/2]).
+-export([get/2,get/3,get/4,put/3,delete/2,subscribe/2]).
 -include("coap.hel").
 %-define(MAX_ID, 65536).
 %-define(TOKEN_LENGTH, 8).
@@ -11,6 +11,28 @@
 %-define(COAP_DELETE, 4).
 
 % Public API
+get(Host, URI, Para) ->
+	Token = make_token(),
+	ID = make_message_id(),
+	{ok, PDU} = pdu:make_pdu(0, ?COAP_GET, Token, ID, URI),
+	{ok, Newpdu} = getpara(PDU, Para),
+	{ok, Destaddr} = inet_parse:address(Host),
+	case gen_udp:open(?TMP_PORT, [binary, inet, {active, false}]) of
+		{ok, Socket} ->
+			gen_udp:send(Socket, Destaddr, ?PORT, Newpdu),
+			Res =  case gen_udp:recv(Socket, 0, 6000) of
+				{ok, {Destaddr, ?PORT, Packet}} ->
+					pdu:get_header(Packet);
+				{error, Reason} ->
+					{error, Reason}
+			end,
+			gen_udp:close(Socket),
+			Res;
+		{error, Reason} ->
+			{error, Reason}
+	end.
+	
+
 
 get(Host, URI) ->
     Token = make_token(),
@@ -186,3 +208,19 @@ loop() ->
 			io:format("{error, recvother}~n"),
 			loop()
 	end.
+
+getpara(PDU, []) ->
+	{ok, PDU};
+getpara(PDU, Allpara) ->
+	[H|L] = Allpara,
+	{ok, Newpdu} = case H of
+		{urihost, Val} ->
+			pdu:add_option(PDU, ?COAP_OPTION_URI_HOST, length(Val), Val);
+		{uriport, Val} ->
+			pdu:add_option(PDU, ?COAP_OPTION_URI_PORT, length(Val), Val);
+		{uriquery, Val} ->
+			pdu:add_option(PDU, ?COAP_OPTION_URI_QUERY, length(Val), Val);
+		{value, Val} ->
+			pdu:add_payload(PDU, Val, length(Val))
+	end,
+	getpara(Newpdu, L).
