@@ -22,7 +22,10 @@ get(Host, URI, Para) ->
 			gen_udp:send(Socket, Destaddr, ?PORT, Newpdu),
 			Res =  case gen_udp:recv(Socket, 0, 6000) of
 				{ok, {Destaddr, ?PORT, Packet}} ->
-					pdu:get_header(Packet);
+					{ok, Ver, Type, Tkl, Code, MID} = pdu:get_header(Packet),
+					io:format("~p~n", [{ok, Ver, Type, Tkl, Code, MID}]),
+					{ok, Content} = pdu:get_content(Packet),
+					io:format("value is: ~p~n", [Content]);
 				{error, Reason} ->
 					{error, Reason}
 			end,
