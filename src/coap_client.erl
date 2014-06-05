@@ -11,6 +11,10 @@
 %-define(COAP_DELETE, 4).
 
 % Public API
+%% @spec get(Host::string(), URI::string(), Para::list())
+%% @type Host::string() = "10.0.0.1" | "192.168.1.1" | ...
+%% @type Para::list() = [options()]
+%% @type options() = {urihost, Host::string()} | {uriport, string()} | {uriquery, string()} | {value, string()}
 get(Host, URI, Para) ->
 	Token = make_token(),
 	ID = make_message_id(),
