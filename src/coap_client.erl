@@ -24,8 +24,11 @@ get(Host, URI, Para) ->
 	case gen_udp:open(?TMP_PORT, [binary, inet, {active, false}]) of
 		{ok, Socket} ->
 			gen_udp:send(Socket, Destaddr, ?PORT, Newpdu),
+			{_, T1, T2} = now(),
 			Res =  case gen_udp:recv(Socket, 0, 6000) of
 				{ok, {Destaddr, ?PORT, Packet}} ->
+					{_, T3, T4} = now(),
+					io:format("Round trip time: ~p seconds\n", [((T3*1000000+T4)-(T1*1000000-T2))/1000000]),
 					{ok, Ver, Type, Tkl, Code, MID} = pdu:get_header(Packet),
 					io:format("~p~n", [{ok, Ver, Type, Tkl, Code, MID}]),
 					{ok, Content} = pdu:get_content(Packet),
